@@ -40,12 +40,39 @@ FastAPI Python backend
 | Platform | Status |
 |----------|--------|
 | macOS Apple Silicon (M1/M2/M3) | ✅ Fully working |
-| Ubuntu / Windows (CUDA GPU) | 🚧 In progress — LLM backend swap + OmniVoice TTS |
+| Ubuntu RTX 2060 (CUDA) | ✅ Working — `main_ubuntu.py` |
 
-**Ubuntu roadmap:**
-- LLM: replace `mlx-lm` with `llama-cpp-python` (CUDA) or `ollama`
-- TTS: replace Kokoro/Qwen3-TTS with **OmniVoice** (diffusion TTS, ~0.1 RTF @ 16 steps)
-- STT: `faster-whisper` already works on CUDA, no change needed
+**Ubuntu stack:**
+- LLM: `Qwen/Qwen2.5-3B-Instruct` via `transformers` + `bitsandbytes` 4-bit CUDA — logit filter + dynamic bias preserved via custom `LogitsProcessor`
+- TTS: **OmniVoice** (`k2-fsa/OmniVoice`, diffusion, ~0.1 RTF @ 16 steps) in `design` mode with Mandarin instruct
+- STT: HuggingFace Whisper on CUDA — logit capturer + vocab locker unchanged
+
+---
+
+## Setup (Ubuntu RTX 2060 / CUDA)
+
+```bash
+# Reuse the omnivoice-tts venv (already has torch, transformers, omnivoice, etc.)
+source /home/jani/dev/typescript/omnivoice-tts/server/.venv/bin/activate
+
+# Install the two missing packages
+pip install bitsandbytes anthropic
+
+# Frontend
+cd frontend && npm install
+
+# Run backend
+cd backend
+uvicorn main_ubuntu:app --host 0.0.0.0 --port 8000
+
+# Run frontend (separate terminal)
+cd frontend && npm run dev
+```
+
+GPU memory budget (RTX 2060 6 GB):
+- Whisper-small: ~0.1 GB
+- Qwen2.5-3B 4-bit: ~1.5–2 GB
+- OmniVoice: ~2–3 GB  ← loaded on demand; `empty_cache()` called after each generate
 
 ---
 

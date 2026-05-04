@@ -1,0 +1,8 @@
+# The omnivoice-tts venv already has torch, transformers, accelerate, omnivoice,
+# fastapi, uvicorn, soundfile.  Only install what's missing:
+#
+#   source /home/jani/dev/typescript/omnivoice-tts/server/.venv/bin/activate
+#   pip install bitsandbytes anthropic
+
+bitsandbytes>=0.43.0
+anthropic

@@ -11,7 +11,7 @@ from transformers import logging as hf_logging
 hf_logging.set_verbosity_error()
 
 MODEL_NAME = "openai/whisper-small"
-DEVICE = "mps" if torch.backends.mps.is_available() else "cpu"
+DEVICE = "cpu"
 VOCAB_BOOST = 3.0  # kept for reference — no longer used for vocab filtering
 
 # Whisper forced prefix: <|zh|>, <|transcribe|>, <|notimestamps|>

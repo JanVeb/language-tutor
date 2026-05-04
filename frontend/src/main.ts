@@ -1,16 +1,16 @@
 import './style.css'
-import { startRecording, stopRecording, playAudioBase64, playAudioStream } from './audio'
+import { startRecording, stopRecording, playAudioBase64 } from './audio'
 
 const WS_URL = 'ws://localhost:8000/ws'
 const API_URL = 'http://localhost:8000'
 
 // ── Settings ──────────────────────────────────────────────────────────────────
-type TtsEngine = 'kokoro' | 'kokoro-mlx' | 'qwen3-tts'
+type TtsEngine = 'omnivoice' | 'qwen3-tts'
 
 let saveAudio    = localStorage.getItem('lt_save_audio') === 'true'
 let filterVocab  = localStorage.getItem('lt_vocab_filter') === 'true'
-let ttsEnginePlay = (localStorage.getItem('lt_tts_engine_play') ?? 'kokoro') as TtsEngine
-let ttsEngineSlow = (localStorage.getItem('lt_tts_engine_slow') ?? 'kokoro') as TtsEngine
+let ttsEnginePlay = (localStorage.getItem('lt_tts_engine_play') ?? 'omnivoice') as TtsEngine
+let ttsEngineSlow = (localStorage.getItem('lt_tts_engine_slow') ?? 'omnivoice') as TtsEngine
 let autoGenSlow   = localStorage.getItem('lt_auto_gen_slow') === 'true'
 let slowInstruct  = localStorage.getItem('lt_slow_instruct') ?? '说话慢一点，发音清晰，语气耐心'
 
@@ -45,17 +45,15 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
         <div class="setting-row setting-select-row">
           <span class="setting-label">▶ Play engine</span>
           <select id="tts-engine-play-sel" class="setting-select">
-            <option value="kokoro"     ${ttsEnginePlay === 'kokoro'     ? 'selected' : ''}>Kokoro</option>
-            <option value="kokoro-mlx" ${ttsEnginePlay === 'kokoro-mlx' ? 'selected' : ''}>Kokoro MLX ⚡</option>
-            <option value="qwen3-tts"  ${ttsEnginePlay === 'qwen3-tts'  ? 'selected' : ''}>Qwen3 TTS ⚡</option>
+            <option value="omnivoice"  ${ttsEnginePlay === 'omnivoice'  ? 'selected' : ''}>OmniVoice</option>
+            <option value="qwen3-tts"  ${ttsEnginePlay === 'qwen3-tts'  ? 'selected' : ''}>Qwen3-TTS</option>
           </select>
         </div>
         <div class="setting-row setting-select-row">
           <span class="setting-label">🐢 Slow engine</span>
           <select id="tts-engine-slow-sel" class="setting-select">
-            <option value="kokoro"     ${ttsEngineSlow === 'kokoro'     ? 'selected' : ''}>Kokoro</option>
-            <option value="kokoro-mlx" ${ttsEngineSlow === 'kokoro-mlx' ? 'selected' : ''}>Kokoro MLX ⚡</option>
-            <option value="qwen3-tts"  ${ttsEngineSlow === 'qwen3-tts'  ? 'selected' : ''}>Qwen3 TTS ⚡ (teacher)</option>
+            <option value="omnivoice"  ${ttsEngineSlow === 'omnivoice'  ? 'selected' : ''}>OmniVoice</option>
+            <option value="qwen3-tts"  ${ttsEngineSlow === 'qwen3-tts'  ? 'selected' : ''}>Qwen3-TTS</option>
           </select>
         </div>
         <div class="setting-col">
@@ -239,18 +237,12 @@ function createBubble(role: 'user' | 'assistant', initialText = '') {
     if (normalAudioB64) { await playAudioBase64(normalAudioB64); return }
     playBtn.disabled = true
     try {
-      let b64: string
-      if (ttsEnginePlay === 'qwen3-tts') {
-        const params = new URLSearchParams({ text: bubbleText })
-        b64 = await playAudioStream(`${API_URL}/speak-stream?${params}`)
-      } else {
-        const res = await fetch(
-          `${API_URL}/speak?text=${encodeURIComponent(bubbleText)}&lang=zh&engine=${ttsEnginePlay}`,
-          { method: 'POST' }
-        )
-        b64 = arrayBufferToBase64(await res.arrayBuffer())
-        await playAudioBase64(b64)
-      }
+      const res = await fetch(
+        `${API_URL}/speak?text=${encodeURIComponent(bubbleText)}&lang=zh&engine=${ttsEnginePlay}`,
+        { method: 'POST' }
+      )
+      const b64 = arrayBufferToBase64(await res.arrayBuffer())
+      await playAudioBase64(b64)
       normalAudioB64 = b64
       trySaveAudioToStorage(`lt_audio_${bubbleText.slice(0, 40)}`, b64)
       if (autoGenSlow) fetchSlowAudio()
@@ -266,14 +258,8 @@ function createBubble(role: 'user' | 'assistant', initialText = '') {
     if (slowAudioB64) { await playAudioBase64(slowAudioB64); return }
     slowBtn.disabled = true
     try {
-      if (ttsEngineSlow === 'qwen3-tts') {
-        const params = new URLSearchParams({ text: bubbleText, slow: 'true', instruct: slowInstruct })
-        slowAudioB64 = await playAudioStream(`${API_URL}/speak-stream?${params}`)
-        trySaveAudioToStorage(`lt_audio_slow_${bubbleText.slice(0, 40)}`, slowAudioB64)
-      } else {
-        await fetchSlowAudio()
-        await playAudioBase64(slowAudioB64!)
-      }
+      await fetchSlowAudio()
+      await playAudioBase64(slowAudioB64!)
     } finally {
       slowBtn.disabled = false
     }
