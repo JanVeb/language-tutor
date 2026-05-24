@@ -70,6 +70,7 @@ def stream_chat(
     system_prompt: str | None = None,
     filter_vocab: bool = False,
     produced_token_ids: list[int] | None = None,
+    history: list[dict] | None = None,
 ) -> Generator[str, None, None]:
     """
     Token-by-token greedy generation with optional dynamic logit bias.
@@ -79,6 +80,7 @@ def stream_chat(
 
     messages = [
         {"role": "system", "content": system_prompt or DEFAULT_SYSTEM_PROMPT},
+        *(history or []),
         {"role": "user", "content": user_message},
     ]
     prompt_text = tokenizer.apply_chat_template(
@@ -88,6 +90,7 @@ def stream_chat(
 
     bias_proc = _DynamicBiasProcessor() if filter_vocab else None
     accumulated: list[int] = []
+    filtered_raw_ids: list[int] = []
     decoded_so_far = ""
     past_key_values = None
     current_input = input_ids
@@ -104,7 +107,13 @@ def stream_chat(
                 past_key_values = outputs.past_key_values
 
                 if bias_proc is not None:
+                    raw_top1 = int(logits.argmax(-1).item())
                     logits = bias_proc(current_input, logits)
+                    if (
+                        bias_proc._bias is not None
+                        and bias_proc._bias[raw_top1].item() < -1e9
+                    ):
+                        filtered_raw_ids.append(raw_top1)
 
                 next_id = int(logits.argmax(-1).item())
                 if next_id in EOS_IDS:
@@ -125,9 +134,24 @@ def stream_chat(
             del past_key_values
             torch.cuda.empty_cache()
 
+    if filtered_raw_ids:
+        from filter_stats import FilterStatsStore
+        texts = [
+            t for raw_id in filtered_raw_ids
+            if (t := tokenizer.decode([raw_id], skip_special_tokens=True).strip())
+        ]
+        if texts:
+            store = FilterStatsStore.get()
+            store.record_many(texts)
+            store.save()
 
-def chat(user_message: str, system_prompt: str | None = None) -> tuple[str, float]:
+
+def chat(
+    user_message: str,
+    system_prompt: str | None = None,
+    history: list[dict] | None = None,
+) -> tuple[str, float]:
     t0 = time.time()
-    tokens = list(stream_chat(user_message, system_prompt))
+    tokens = list(stream_chat(user_message, system_prompt, history=history))
     elapsed = time.time() - t0
     return "".join(tokens), elapsed

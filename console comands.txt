@@ -5,13 +5,13 @@ kill 22573
 kill 41647 50198
 
 # Restart from the backend directory
-cd /Users/renamelater/Dev/TypeScript/language-tutor/backend
-source ../venv/bin/activate
+cd /home/jani/Dev/Typescript/language-tutor/backend
+source /home/jani/Dev/Typescript/OmniVoice-python-nvidia/venv/bin/activate
 uvicorn main:app --host 0.0.0.0 --port 8000
 
 ubuntu
-source /home/jani/dev/typescript/omnivoice-tts/server/.venv/bin/activate
-cd /home/jani/dev/typescript/language-tutor/backend
+source /home/jani/Dev/Typescript/OmniVoice-python-nvidia/venv/bin/activate
+cd /home/jani/Dev/Typescript/language-tutor/backend
 uvicorn main_ubuntu:app --host 0.0.0.0 --port 8000
 
 clear gpu memory 
@@ -20,15 +20,21 @@ kill -9 15597
 
 
 Qwen3-TTS stack:
-cd /home/jani/dev/typescript/language-tutor/backend
-venv_qwen3/bin/uvicorn main_qwen3:app --host 0.0.0.0 --port 8000
+cd /home/jani/Dev/Typescript/language-tutor/backend
+source /home/jani/Dev/TS/backend/venv/bin/activate
+uvicorn main_qwen3:app --host 0.0.0.0 --port 8000
 
 OmniVoice stack:
-source /home/jani/dev/typescript/omnivoice-tts/server/.venv/bin/activate
-cd /home/jani/dev/typescript/language-tutor/backend
+source /home/jani/Dev/Typescript/OmniVoice-python-nvidia/venv/bin/activate
+cd /home/jani/Dev/Typescript/language-tutor/backend
 uvicorn main_ubuntu:app --host 0.0.0.0 --port 8000
 
 
 Frontend (same for both):
 cd /home/jani/dev/typescript/language-tutor/frontend
 npm run dev
+
+
+cd /home/jani/Dev/Typescript/language-tutor/backend
+source /home/jani/Dev/TS/backend/venv/bin/activate
+uvicorn main_qwen3:app --host 0.0.0.0 --port 8000

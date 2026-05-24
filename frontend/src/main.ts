@@ -13,6 +13,7 @@ let ttsEnginePlay = (localStorage.getItem('lt_tts_engine_play') ?? 'omnivoice') 
 let ttsEngineSlow = (localStorage.getItem('lt_tts_engine_slow') ?? 'omnivoice') as TtsEngine
 let autoGenSlow   = localStorage.getItem('lt_auto_gen_slow') === 'true'
 let slowInstruct  = localStorage.getItem('lt_slow_instruct') ?? '说话慢一点，发音清晰，语气耐心'
+let historyTurns  = parseInt(localStorage.getItem('lt_history_turns') ?? '10', 10)
 
 function persistSettings() {
   localStorage.setItem('lt_save_audio',       String(saveAudio))
@@ -21,14 +22,29 @@ function persistSettings() {
   localStorage.setItem('lt_tts_engine_slow',  ttsEngineSlow)
   localStorage.setItem('lt_auto_gen_slow',    String(autoGenSlow))
   localStorage.setItem('lt_slow_instruct',    slowInstruct)
+  localStorage.setItem('lt_history_turns',    String(historyTurns))
 }
 
 // ── HTML ──────────────────────────────────────────────────────────────────────
 document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
   <div class="chat-container">
     <div class="header-row">
+      <button id="stats-btn" class="icon-btn icon-btn-left" title="Filter stats">📊</button>
       <h1>Language Tutor</h1>
       <button id="settings-btn" class="icon-btn" title="Settings">⚙</button>
+    </div>
+
+    <div id="stats-overlay" class="stats-overlay hidden">
+      <div id="stats-panel" class="stats-panel">
+        <div class="stats-header">
+          <span class="stats-title">Filtered tokens</span>
+          <div class="stats-header-actions">
+            <button id="stats-clear-btn" class="stats-clear-btn">Clear</button>
+            <button id="stats-close-btn" class="stats-close-btn">✕</button>
+          </div>
+        </div>
+        <div id="stats-list" class="stats-list"></div>
+      </div>
     </div>
 
     <div id="settings-overlay" class="settings-overlay hidden">
@@ -64,6 +80,10 @@ document.querySelector<HTMLDivElement>('#app')!.innerHTML = `
           <input type="checkbox" id="auto-gen-slow-cb" ${autoGenSlow ? 'checked' : ''} />
           Auto-generate 🐢 slow audio after ▶ plays
         </label>
+        <div class="setting-row setting-select-row">
+          <span class="setting-label">History turns</span>
+          <input type="number" id="history-turns-input" class="setting-number" min="0" max="50" value="${historyTurns}" />
+        </div>
       </div>
     </div>
 
@@ -89,12 +109,19 @@ const timingsEl = document.getElementById('timings')!
 const settingsBtn = document.getElementById('settings-btn') as HTMLButtonElement
 const settingsOverlay = document.getElementById('settings-overlay') as HTMLDivElement
 const settingsPanel = document.getElementById('settings-panel') as HTMLDivElement
+const statsBtn = document.getElementById('stats-btn') as HTMLButtonElement
+const statsOverlay = document.getElementById('stats-overlay') as HTMLDivElement
+const statsPanel = document.getElementById('stats-panel') as HTMLDivElement
+const statsList = document.getElementById('stats-list') as HTMLDivElement
+const statsClearBtn = document.getElementById('stats-clear-btn') as HTMLButtonElement
+const statsCloseBtn = document.getElementById('stats-close-btn') as HTMLButtonElement
 const vocabFilterCb      = document.getElementById('vocab-filter-cb')       as HTMLInputElement
 const saveAudioCb        = document.getElementById('save-audio-cb')         as HTMLInputElement
 const ttsEnginePlaySel   = document.getElementById('tts-engine-play-sel')   as HTMLSelectElement
 const ttsEngineSlowSel   = document.getElementById('tts-engine-slow-sel')   as HTMLSelectElement
 const autoGenSlowCb      = document.getElementById('auto-gen-slow-cb')      as HTMLInputElement
 const slowInstructTa     = document.getElementById('slow-instruct-ta')      as HTMLTextAreaElement
+const historyTurnsInput  = document.getElementById('history-turns-input')   as HTMLInputElement
 
 // ── Settings wiring ───────────────────────────────────────────────────────────
 settingsBtn.addEventListener('click', (e) => {
@@ -136,6 +163,63 @@ autoGenSlowCb.addEventListener('change', () => {
 slowInstructTa.addEventListener('input', () => {
   slowInstruct = slowInstructTa.value
   persistSettings()
+})
+
+historyTurnsInput.addEventListener('change', () => {
+  const v = parseInt(historyTurnsInput.value, 10)
+  if (!isNaN(v) && v >= 0) {
+    historyTurns = v
+    persistSettings()
+  }
+})
+
+// ── Stats panel ───────────────────────────────────────────────────────────────
+async function loadStats() {
+  statsList.textContent = 'Loading…'
+  try {
+    const res = await fetch(`${API_URL}/filter-stats`)
+    const data = await res.json() as { tokens: { token: string; count: number }[] }
+    if (data.tokens.length === 0) {
+      statsList.textContent = 'No data yet. Enable vocab filter and chat.'
+      return
+    }
+    statsList.innerHTML = ''
+    const maxCount = data.tokens[0].count
+    for (const { token, count } of data.tokens) {
+      const row = document.createElement('div')
+      row.className = 'stats-row'
+      const bar = document.createElement('div')
+      bar.className = 'stats-bar'
+      bar.style.width = `${Math.round((count / maxCount) * 100)}%`
+      const label = document.createElement('span')
+      label.className = 'stats-token'
+      label.textContent = token
+      const cnt = document.createElement('span')
+      cnt.className = 'stats-count'
+      cnt.textContent = String(count)
+      row.append(bar, label, cnt)
+      statsList.appendChild(row)
+    }
+  } catch {
+    statsList.textContent = 'Failed to load stats.'
+  }
+}
+
+statsBtn.addEventListener('click', (e) => {
+  e.stopPropagation()
+  statsOverlay.classList.toggle('hidden')
+  if (!statsOverlay.classList.contains('hidden')) loadStats()
+})
+
+statsOverlay.addEventListener('click', (e) => {
+  if (!statsPanel.contains(e.target as Node)) statsOverlay.classList.add('hidden')
+})
+
+statsCloseBtn.addEventListener('click', () => statsOverlay.classList.add('hidden'))
+
+statsClearBtn.addEventListener('click', async () => {
+  await fetch(`${API_URL}/filter-stats/clear`, { method: 'POST' })
+  loadStats()
 })
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -340,6 +424,15 @@ let pendingAiBubble: BubbleHandle | null = null  // bubble waiting for audio att
 
 let tSend = 0, tTranscript = 0, tFirstToken = 0, tResponseDone = 0
 
+type HistoryEntry = { role: 'user' | 'assistant'; content: string }
+const conversationHistory: HistoryEntry[] = []
+
+function getHistorySlice(): HistoryEntry[] {
+  if (historyTurns === 0) return []
+  // Each turn = 1 user + 1 assistant message = 2 entries
+  return conversationHistory.slice(-(historyTurns * 2))
+}
+
 function connectWebSocket() {
   ws = new WebSocket(WS_URL)
 
@@ -355,6 +448,7 @@ function connectWebSocket() {
       case 'transcript': {
         tTranscript = performance.now()
         createBubble('user', msg.text)
+        conversationHistory.push({ role: 'user', content: msg.text })
         setStatus('Thinking…')
         setTimings([{ label: 'STT', ms: Math.round(tTranscript - tSend) }])
         streamingBubble = null
@@ -378,6 +472,7 @@ function connectWebSocket() {
       }
       case 'response_done': {
         tResponseDone = performance.now()
+        conversationHistory.push({ role: 'assistant', content: msg.text })
         streamingBubble = null
         setStatus('Synthesising…')
         setTimings([
@@ -435,7 +530,7 @@ async function handleTextSend() {
   setInputsDisabled(true)
   clearTimings()
   tSend = performance.now()
-  ws.send(JSON.stringify({ type: 'text', message: text, filter_vocab: filterVocab, tts_engine: ttsEnginePlay }))
+  ws.send(JSON.stringify({ type: 'text', message: text, filter_vocab: filterVocab, tts_engine: ttsEnginePlay, history: getHistorySlice() }))
 }
 
 sendBtn.addEventListener('click', handleTextSend)
@@ -468,7 +563,7 @@ micBtn.addEventListener('click', async () => {
       }
       tSend = performance.now()
       const b64 = await blobToBase64(blob)
-      ws.send(JSON.stringify({ type: 'audio', data: b64, filter_vocab: filterVocab, tts_engine: ttsEnginePlay }))
+      ws.send(JSON.stringify({ type: 'audio', data: b64, filter_vocab: filterVocab, tts_engine: ttsEnginePlay, history: getHistorySlice() }))
     } catch (e) {
       setStatus(`Error: ${e}`)
       setInputsDisabled(false)

@@ -12,6 +12,7 @@ from stt import transcribe, get_model as get_stt
 from tts_omnivoice import speak, speak_stream
 from scores import ScoresStore
 from vocabulary import get_qwen_vocab, whisper_to_qwen_id
+from filter_stats import FilterStatsStore
 
 app = FastAPI()
 
@@ -56,6 +57,17 @@ class TranscribeResponse(BaseModel):
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
+
+@app.get("/filter-stats")
+def get_filter_stats():
+    return {"tokens": FilterStatsStore.get().get_sorted()}
+
+
+@app.post("/filter-stats/clear")
+def clear_filter_stats():
+    FilterStatsStore.get().clear()
+    return {"ok": True}
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -213,12 +225,14 @@ async def _stream_llm_to_ws(
     system_prompt: str | None,
     filter_vocab: bool = False,
     produced_token_ids: list[int] | None = None,
+    history: list[dict] | None = None,
 ) -> str:
     full_response: list[str] = []
     for token_text in stream_chat(
         user_message, system_prompt,
         filter_vocab=filter_vocab,
         produced_token_ids=produced_token_ids,
+        history=history,
     ):
         full_response.append(token_text)
         await websocket.send_json({"type": "token", "text": token_text})
@@ -234,6 +248,7 @@ async def websocket_endpoint(websocket: WebSocket):
             msg_type = msg.get("type")
             system_prompt = msg.get("system_prompt")
             filter_vocab = bool(msg.get("filter_vocab", False))
+            history: list[dict] | None = msg.get("history") or None
 
             if msg_type == "audio":
                 audio_bytes = base64.b64decode(msg["data"])
@@ -245,7 +260,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 produced_llm_ids: list[int] = []
                 response = await _stream_llm_to_ws(
-                    websocket, transcript, system_prompt, filter_vocab, produced_llm_ids
+                    websocket, transcript, system_prompt, filter_vocab, produced_llm_ids, history
                 )
                 await websocket.send_json({"type": "response_done", "text": response})
 
@@ -266,7 +281,7 @@ async def websocket_endpoint(websocket: WebSocket):
 
                 produced_llm_ids: list[int] = []
                 response = await _stream_llm_to_ws(
-                    websocket, user_message, system_prompt, filter_vocab, produced_llm_ids
+                    websocket, user_message, system_prompt, filter_vocab, produced_llm_ids, history
                 )
                 await websocket.send_json({"type": "response_done", "text": response})
 
